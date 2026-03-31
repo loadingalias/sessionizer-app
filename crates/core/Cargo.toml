@@ -1,0 +1,28 @@
+[package]
+name = "forgeguard_core"
+version = "0.0.0"
+homepage = "https://github.com/cloudbridgeuy/forgeguard"
+description = "Shared primitives, traits, and error types for ForgeGuard"
+autobins = false
+
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "forgeguard_core"
+path = "src/lib.rs"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+xxhash-rust = { workspace = true }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+uuid = { workspace = true, features = ["js"] }
+
+[lints]
+workspace = true

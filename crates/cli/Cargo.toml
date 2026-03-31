@@ -1,0 +1,20 @@
+[package]
+name = "sessionizer_cli"
+version = "0.0.0"
+homepage = "https://github.com/cloudbridgeuy/sessionizer"
+description = "sessionizer developer CLI — schema validation, policy testing, local dev"
+autobins = false
+
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "sessionizer"
+path = "src/main.rs"
+
+[dependencies]
+sessionizer_core = { workspace = true }
+
+[lints]
+workspace = true
