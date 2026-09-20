@@ -15,24 +15,36 @@ jobs:
     runs-on: ubuntu-latest
     if: "!startsWith(github.event.head_commit.message, 'chore: bump version')"
     outputs:
-      cargo-args: ${{ steps.changes.outputs.cargo-args }}
-      rebuild-all: ${{ steps.changes.outputs.rebuild-all }}
-      count: ${{ steps.changes.outputs.count }}
+      required-work: ${{ steps.changes.outputs.required-work }}
+      plan-file: ${{ steps.changes.outputs.plan-file }}
+      version: ${{ steps.changes.outputs.version }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
-      - name: Detect affected crates
+      - name: Plan required work
         id: changes
-        uses: loadingalias/cargo-rail-action@v1
+        uses: loadingalias/cargo-rail-action@4a8df181e4f340a164190cf092c9f9239b20edab # v10.0.1
+
+      - name: Upload Linux plan
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: cargo-rail-plan-linux
+          path: ${{ steps.changes.outputs.plan-file }}
+          if-no-files-found: error
 
   test:
     name: Test Suite
     runs-on: ubuntu-latest
     needs: [detect]
-    if: "!startsWith(github.event.head_commit.message, 'chore: bump version') && needs.detect.outputs.count != '0'"
+    if: >-
+      !startsWith(github.event.head_commit.message, 'chore: bump version') &&
+      (contains(fromJSON(needs.detect.outputs.required-work), 'cargo.test') ||
+      contains(fromJSON(needs.detect.outputs.required-work), 'cargo.clippy') ||
+      contains(fromJSON(needs.detect.outputs.required-work), 'cargo.fmt') ||
+      contains(fromJSON(needs.detect.outputs.required-work), 'ci'))
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
@@ -61,13 +73,29 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-target-
 
-      - name: Run tests (all crates)
-        if: needs.detect.outputs.rebuild-all == 'true'
-        run: cargo test --workspace --verbose
+      - name: Download Linux plan
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: cargo-rail-plan-linux
+          path: ${{ runner.temp }}/cargo-rail-plan
 
-      - name: Run tests (affected crates only)
-        if: needs.detect.outputs.rebuild-all != 'true' && needs.detect.outputs.count != '0'
-        run: cargo test ${{ needs.detect.outputs.cargo-args }} --verbose
+      - name: Install Cargo-Rail plan consumer
+        uses: loadingalias/cargo-rail-action/setup@4a8df181e4f340a164190cf092c9f9239b20edab # v10.0.1
+        with:
+          version: ${{ needs.detect.outputs.version }}
+
+      - name: Run tests for affected crates
+        if: contains(fromJSON(needs.detect.outputs.required-work), 'cargo.test')
+        shell: bash
+        env:
+          PLAN_FILE: ${{ runner.temp }}/cargo-rail-plan/plan.json
+        run: |
+          ARGS_FILE="$(mktemp "$RUNNER_TEMP/cargo-rail-args.XXXXXX")"
+          cargo-rail-action plan cargo-args "$PLAN_FILE" cargo.test > "$ARGS_FILE" || exit "$?"
+          CARGO_ARGS=()
+          while IFS= read -r -d '' argument; do CARGO_ARGS+=("$argument"); done < "$ARGS_FILE"
+          rm -- "$ARGS_FILE"
+          cargo test "${CARGO_ARGS[@]}" --verbose
 
       - name: Run clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
@@ -79,7 +107,10 @@ jobs:
     name: Build Check
     runs-on: ${{ matrix.os }}
     needs: [detect]
-    if: "!startsWith(github.event.head_commit.message, 'chore: bump version') && needs.detect.outputs.count != '0'"
+    if: >-
+      !startsWith(github.event.head_commit.message, 'chore: bump version') &&
+      (contains(fromJSON(needs.detect.outputs.required-work), 'cargo.build') ||
+      contains(fromJSON(needs.detect.outputs.required-work), 'ci'))
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest]
@@ -115,7 +146,11 @@ jobs:
   unused-deps:
     name: Check Unused Dependencies
     runs-on: ubuntu-latest
-    if: "!startsWith(github.event.head_commit.message, 'chore: bump version')"
+    needs: [detect]
+    if: >-
+      !startsWith(github.event.head_commit.message, 'chore: bump version') &&
+      (contains(fromJSON(needs.detect.outputs.required-work), 'dependency-policy') ||
+      contains(fromJSON(needs.detect.outputs.required-work), 'ci'))
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
@@ -123,11 +158,8 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Install cargo-binstall
-        uses: cargo-bins/cargo-binstall@main
-
       - name: Install cargo-rail
-        run: cargo binstall cargo-rail --no-confirm
+        uses: loadingalias/cargo-rail-action/setup@4a8df181e4f340a164190cf092c9f9239b20edab # v10.0.1
 
       - name: Check for unused dependencies
         run: cargo rail unify --check
@@ -135,7 +167,11 @@ jobs:
   deny:
     name: Dependency Audit
     runs-on: ubuntu-latest
-    if: "!startsWith(github.event.head_commit.message, 'chore: bump version')"
+    needs: [detect]
+    if: >-
+      !startsWith(github.event.head_commit.message, 'chore: bump version') &&
+      (contains(fromJSON(needs.detect.outputs.required-work), 'dependency-policy') ||
+      contains(fromJSON(needs.detect.outputs.required-work), 'ci'))
     steps:
       - name: Checkout code
         uses: actions/checkout@v5

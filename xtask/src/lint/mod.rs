@@ -178,7 +178,7 @@ fn should_skip(id: CheckId, args: &LintArgs) -> bool {
 ///
 /// - `fmt`: drops `--check` so formatting is applied directly.
 /// - `clippy`: appends `--fix --allow-dirty` before the `--` separator.
-/// - `rail`: drops `--check` so unification is applied directly.
+/// - `rail`: explicitly applies unification and keeps manifest backups.
 /// - All others: unchanged (`None`).
 fn fix_args(id: CheckId) -> Option<Vec<&'static str>> {
     match id {
@@ -193,7 +193,7 @@ fn fix_args(id: CheckId) -> Option<Vec<&'static str>> {
             "-D",
             "warnings",
         ]),
-        CheckId::Rail => Some(vec!["rail", "unify"]),
+        CheckId::Rail => Some(vec!["rail", "unify", "apply", "--backup"]),
         _ => None,
     }
 }
@@ -551,10 +551,9 @@ mod tests {
     }
 
     #[test]
-    fn test_fix_args_rail_drops_check_flag() {
+    fn test_fix_args_rail_applies_with_backup() {
         let args = fix_args(CheckId::Rail).expect("rail should have fix args");
-        assert_eq!(args, vec!["rail", "unify"]);
-        assert!(!args.contains(&"--check"));
+        assert_eq!(args, vec!["rail", "unify", "apply", "--backup"]);
     }
 
     #[test]
